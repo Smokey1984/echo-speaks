@@ -160,7 +160,7 @@ def mainPage() {
         Boolean dup = (settings?.duplicateFlag == true || state?.dupPendingSetup == true)
         if(dup) {
             state?.dupOpenedByUser = true
-            section() { paragraph pTS("This Action was just created from an existing action.\n\nPlease review the settings and save to activate...", getAppImg("pause_orange", true), false, "red"), required: true, state: null, image: getAppImg("pause_orange") }
+            section() { paragraph pTS("This Action was just created from an existing action.\n\nPlease unpause and review the settings and save to activate...", getAppImg("pause_orange", true), false, "red"), required: true, state: null, image: getAppImg("pause_orange") }
         }
         if(paused) {
             section() {
@@ -1896,7 +1896,11 @@ Boolean wordInString(String findStr, String fullStr) {
 def installed() {
     logInfo("Installed Event Received...")
     state?.dateInstalled = getDtNow()
-    initialize()
+    if(settings?.duplicateFlag == true && state?.dupPendingSetup != false) {
+        runIn(3, "processDuplication")
+    } else {
+        initialize()
+    }
 }
 
 def updated() {
@@ -1910,19 +1914,10 @@ def initialize() {
     unsubscribe()
     unschedule()
     if(settings?.duplicateFlag == true && state?.dupPendingSetup == false) {
-        settingUpdate("duplicateFlag", "false", "bool")
-        state?.remove("dupOpenedByUser")
+        // settingUpdate("duplicateFlag", "false", "bool")
+        // state?.remove("dupOpenedByUser")
     } else if(settings?.duplicateFlag == true && state?.dupPendingSetup != false) {
-        String newLbl = app?.getLabel() + app?.getLabel()?.toString()?.contains("(Dup)") ? "" : " (Dup)"
-        app?.updateLabel(newLbl)
-        state?.dupPendingSetup = true
-        def dupState = parent?.getDupActionStateData()
-        if(dupState?.size()) {
-            dupState?.each {k,v-> state[k] = v }
-            parent?.clearDuplicationItems()
-        }
-        logInfo("Duplicated Action has been created... Please open action and configure to complete setup...")
-        return
+        processDuplication()
     }
     state?.isInstalled = true
     updAppLabel()
@@ -1932,6 +1927,24 @@ def initialize() {
     updateZoneSubscriptions() // Subscribes to Echo Speaks Zone Activation Events...
     updConfigStatusMap()
     resumeTierJobs()
+}
+
+void processDuplication() {
+    String newLbl = "${app?.getLabel()}${app?.getLabel()?.toString()?.contains("(Dup)") ? "" : " (Dup)"}"
+    String dupSrcId = settings?.duplicateSrcId ? (String)settings?.duplicateSrcId : (String)null
+    app?.updateLabel(newLbl)
+    state?.dupPendingSetup = true
+    Map dupData = parent?.getDupChildData("action", dupSrcId)
+    log.debug "dupData: ${dupData}"
+    if(dupData && dupData?.state?.size()) {
+        dupData?.state?.each {k,v-> state[k] = v }
+    }
+    if(dupData && dupData?.settings?.size()) {
+        dupData?.settings?.each {k,v-> settingUpdate(k, (v.value != null ? v.value : null), v.type) }
+    }
+    parent?.clearDuplicationItems()
+    logInfo("Duplicated Action has been created... Please open action and configure to complete setup...")
+    return
 }
 
 def updateZoneSubscriptions() {
@@ -4083,7 +4096,7 @@ String getNotifSchedDesc(min=false) {
 
 String getTriggersDesc(hideDesc=false) {
     Boolean confd = triggersConfigured()
-    List setItem = settings?.triggerEvents
+    def setItem = settings?.triggerEvents
     String sPre = "trig_"
     if(confd && setItem?.size()) {
         if(!hideDesc) {

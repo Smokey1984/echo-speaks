@@ -16,7 +16,7 @@
 
 import groovy.transform.Field
 @Field static final String appVersionFLD  = "3.6.4.4"
-@Field static final String appModifiedFLD = "2020-10-28"
+@Field static final String appModifiedFLD = "2020-12-08"
 @Field static final String branchFLD      = "master"
 @Field static final String platformFLD    = "Hubitat"
 @Field static final Boolean isStFLD       = false
@@ -483,7 +483,7 @@ def actionsPage() {
         else { section("") { paragraph pTS("You haven't created any Actions yet!\nTap Create New Action to get Started") } }
         section() {
             app(name: "actionApp", appName: actChildName(), namespace: "tonesto7", multiple: true, title: inTS("Create New Action", getAppImg("es_actions", true)), image: getAppImg("es_actions"))
-            if(actApps?.size() && isStFLD) {
+            if(actApps?.size()) {
                 input "actionDuplicateSelect", "enum", title: inTS("Duplicate Existing Action", getAppImg("es_actions", true)), description: "Tap to select...", options: actApps?.collectEntries { [(it?.id):it?.getLabel()] }, required: false, multiple: false, submitOnChange: true, image: getAppImg("es_actions")
                 if(settings?.actionDuplicateSelect) {
                     href "actionDuplicationPage", title: inTS("Create Duplicate Action?", getAppImg("question", true)), description: "Tap to proceed...", image: getAppImg("question")
@@ -524,7 +524,10 @@ def actionDuplicationPage() {
                 def act = getActionApps()?.find { it?.id?.toString() == settings?.actionDuplicateSelect?.toString() }
                 if(act) {
                     Map actData = act?.getDuplSettingData()
+                    log.debug "Dup Data: ${actData}"
                     actData?.settings["duplicateFlag"] = [type: "bool", value: true]
+                    // actData?.settings["actionPause"] = [type: "bool", value: true]
+                    actData?.settings["duplicateSrcId"] = [type: "text", value: act?.getId()]
                     addChildApp("tonesto7", actChildName(), "${actData?.label} (Dup)", [settings: actData?.settings])
                     paragraph pTS("Action Duplicated...\n\nReturn to Action Page and look for the App with '(Dup)' in the name...", sNULL, true, "#2784D9"), state: "complete"
                 } else { paragraph pTS("Action not Found", sNULL, true, "red"), required: true, state: sNULL }
@@ -543,7 +546,9 @@ def zoneDuplicationPage() {
                 def zn = getZoneApps()?.find { it?.id?.toString() == settings?.zoneDuplicateSelect?.toString() }
                 if(zn) {
                     Map znData = zn.getDuplSettingData()
-                    znData.settings["duplicateFlag"] = [type: "bool", value: true]
+                    znData?.settings["duplicateFlag"] = [type: "bool", value: true]
+                    // znData?.settings["zonePause"] = [type: "bool", value: true]
+                    znData?.settings["duplicateSrcId"] = [type: "text", value: act?.getId()]
                     addChildApp("tonesto7", zoneChildName(), "${znData?.label} (Dup)", [settings: znData.settings])
                     paragraph pTS("Zone Duplicated...\n\nReturn to Zone Page and look for the App with '(Dup)' in the name...", sNULL, true, "#2784D9"), state: "complete"
                 } else { paragraph pTS("Zone not Found", sNULL, true, "red"), required: true, state: sNULL }
@@ -560,13 +565,26 @@ public clearDuplicationItems() {
     settingRemove("zoneDuplicateSelect")
 }
 
-public getDupActionStateData() {
-    def act = getActionApps()?.find { it?.id == settings?.actionDuplicateSelect }
-    return act?.getDuplStateData() ?: null
-}
-public getDupZoneStateData() {
-    def act = getActionApps()?.find { it?.id == settings?.actionDuplicateSelect }
-    return act?.getDuplStateData() ?: null
+public Map getDupChildData(String type, String childId) {
+    log.trace "getDupChildData($type, $childId)"
+    Map data = [:]
+    switch(type) {
+        case "action":
+            def act = getActionApps()?.find { it?.id.toString() == childId }
+            if(act) {
+                data.settings = act?.getDuplSettingData() ?: null
+                data.state = act?.getDuplStateData() ?: null
+            }
+            break
+        case "zone":
+            def zone = getZoneApps()?.find { it?.id?.toString() == childId }
+            if(zone) {
+                data.settings = zone?.getDuplSettingData() ?: null
+                data.state = zone?.getDuplStateData() ?: null
+            }
+            break
+    }
+    return (Map)data
 }
 
 def zonesPage() {
